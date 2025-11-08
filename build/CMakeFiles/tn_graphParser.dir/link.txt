@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -D COLOURING -D TUNNEL -rdynamic CMakeFiles/tn_graphParser.dir/examples/tn_graphUsage.c.o -o tn_graphParser  libmyGraph.a libparser.a libtunnelPb.a

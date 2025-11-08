@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -D COLOURING -D TUNNEL -rdynamic CMakeFiles/graphProblemSolver.dir/src/main/main.c.o -o graphProblemSolver  -lz3 libmyGraph.a libmyZ3.a libparser.a libcolouringPb.a libtunnelPb.a

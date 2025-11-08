@@ -1,1 +1,0 @@
-/usr/bin/gcc -g -D COLOURING -D TUNNEL -rdynamic CMakeFiles/Z3Example.dir/examples/Z3Example.c.o -o Z3Example  -lz3 libmyZ3.a

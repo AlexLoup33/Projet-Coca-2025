@@ -1,2 +1,0 @@
-/usr/bin/ar qc libmyZ3.a CMakeFiles/myZ3.dir/src/main/Z3Tools.c.o
-/usr/bin/ranlib libmyZ3.a

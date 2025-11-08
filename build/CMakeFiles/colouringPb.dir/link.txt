@@ -1,2 +1,0 @@
-/usr/bin/ar qc libcolouringPb.a CMakeFiles/colouringPb.dir/src/ColouringProblem/ColouredGraph.c.o CMakeFiles/colouringPb.dir/src/ColouringProblem/ColouringReduction.c.o CMakeFiles/colouringPb.dir/src/ColouringProblem/ColouringResolution.c.o
-/usr/bin/ranlib libcolouringPb.a
