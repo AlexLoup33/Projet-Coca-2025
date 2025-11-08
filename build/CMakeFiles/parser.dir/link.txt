@@ -1,0 +1,2 @@
+/usr/bin/ar qc libparser.a CMakeFiles/parser.dir/src/parser/src/EdgeList.c.o CMakeFiles/parser.dir/src/parser/src/NodeList.c.o CMakeFiles/parser.dir/src/parser/src/GraphListToGraph.c.o CMakeFiles/parser.dir/src/parser/src/Parsing.c.o CMakeFiles/parser.dir/Parser.c.o CMakeFiles/parser.dir/Lexer.c.o
+/usr/bin/ranlib libparser.a

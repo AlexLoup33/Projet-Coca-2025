@@ -1,0 +1,2 @@
+/usr/bin/ar qc libmyGraph.a CMakeFiles/myGraph.dir/src/main/Graph.c.o
+/usr/bin/ranlib libmyGraph.a

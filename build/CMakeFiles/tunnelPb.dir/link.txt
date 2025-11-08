@@ -1,0 +1,2 @@
+/usr/bin/ar qc libtunnelPb.a CMakeFiles/tunnelPb.dir/src/TunnelRouting/TunnelBF.c.o CMakeFiles/tunnelPb.dir/src/TunnelRouting/TunnelNetwork.c.o CMakeFiles/tunnelPb.dir/src/TunnelRouting/TunnelReduction.c.o
+/usr/bin/ranlib libtunnelPb.a

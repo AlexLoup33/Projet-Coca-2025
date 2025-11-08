@@ -1,0 +1,9 @@
+digraph A{
+s [shape=square][label="4→4"];
+u1 [label="4↑46"];
+u2 [label="46↓4"];
+d [shape = invtriangle] [label="4→4"];
+s -> u1;
+u1 -> u2;
+u2 -> d;
+}
