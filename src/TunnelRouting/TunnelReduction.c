@@ -49,6 +49,43 @@ Z3_ast tn_6_variable(Z3_context ctx, int pos, int height)
 }
 
 /**
+ * @brief φ1 : Existence, unique opération et unique hauteur.
+ * 
+ * @param ctx The solver context.
+ * @param length The length of the sought path.
+ * @param size The size of the stack.
+ * @return Z3_ast
+ */
+Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length, int size){
+    Z3_ast uniqueOp_var[length*size*10];
+    Z3_ast uniqueHeight_var[length*(length^2)*100];
+    for (int i = 0; i < length+1; i++){
+        for (int op = 0; op < 10; op++){
+            for (int h = 0; i < size; h++){
+                uniqueOp_var[i*op*h] = tn_path_variable(ctx, op, i, h);
+            }
+        }
+
+        for (int op = 0, opP = 0; op, opP < 10; op++, opP++){
+            for (int h = 0, hP = 0; h, hP < size; h++, hP++){
+                if ((op, h) == (opP, hP)){
+                    uniqueHeight_var[i*op*opP*h*hP] = Z3_mk_false(ctx);
+                }else{
+                    uniqueHeight_var[i*op*opP*h*hP] = Z3_mk_or(ctx, 2, (Z3_ast[]){Z3_mk_not(ctx, tn_path_variable(ctx, op, i, h)), Z3_mk_not(ctx, tn_path_variable(ctx, opP, i, hP))});
+                }
+            }
+        }
+    }
+
+    Z3_ast uniqueOp = Z3_mk_or(ctx, length*size*10, uniqueOp_var);
+    Z3_ast uniqueHeight = Z3_mk_and(ctx, length*(length^2)*100, uniqueHeight_var);
+
+    Z3_ast res[2] = {uniqueOp, uniqueHeight};
+
+    return Z3_mk_and(ctx, 2, res);
+}
+
+/**
  * @brief Wrapper to have the correct size of the array representing the stack (correct cells of the stack will be from 0 to (get_stack_size(length)-1)).
  *
  * @param length The length of the sought path.
