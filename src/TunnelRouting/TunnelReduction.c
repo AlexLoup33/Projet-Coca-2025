@@ -98,7 +98,7 @@ int get_stack_size(int length)
 
 Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
 {
-    return Z3_mk_false(ctx);
+    return tn_exist_uniqueOp_uniqueHeight(ctx, length, get_stack_size(length));
 }
 
 void tn_get_path_from_model(Z3_context ctx, Z3_model model, TunnelNetwork network, int bound, tn_step *path)
