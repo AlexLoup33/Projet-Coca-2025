@@ -59,7 +59,7 @@ Z3_ast tn_6_variable(Z3_context ctx, int pos, int height)
 Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length, int size){
     Z3_ast uniqueOp_var[length*size*10];
     Z3_ast uniqueHeight_var[length*(length^2)*100];
-    for (int i = 0; i < length+1; i++){
+    for (int i = 0; i < length; i++){
         for (int op = 0; op < 10; op++){
             for (int h = 0; i < size; h++){
                 uniqueOp_var[i*op*h] = tn_path_variable(ctx, op, i, h);
@@ -83,6 +83,17 @@ Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length, int size){
     Z3_ast res[2] = {uniqueOp, uniqueHeight};
 
     return Z3_mk_and(ctx, 2, res);
+}
+
+/**
+ * @brief φ2 : Pile initiale et finale
+ * 
+ * @param ctx The solver context.$
+ * @param length The length of the sought path.
+ * @return Z3_ast
+ */
+Z3_ast tn_init_final_stack(Z3_context ctx, int length){
+    Z3_mk_and(ctx, 2, (Z3_ast[]){tn_4_variable(ctx, 0, 0), tn_4_variable(ctx, length, 0)});
 }
 
 /**
