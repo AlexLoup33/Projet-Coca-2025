@@ -88,12 +88,99 @@ Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length, int size){
 /**
  * @brief φ2 : Pile initiale et finale
  * 
- * @param ctx The solver context.$
+ * @param ctx The solver context.
  * @param length The length of the sought path.
  * @return Z3_ast
  */
 Z3_ast tn_init_final_stack(Z3_context ctx, int length){
     Z3_mk_and(ctx, 2, (Z3_ast[]){tn_4_variable(ctx, 0, 0), tn_4_variable(ctx, length, 0)});
+}
+
+/**
+ * @brief φ3 : Règle de transition de hauteur pour la Transmission
+ * 
+ * @param length The length of the sought path.
+ * @param pos The current position of the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_transition_stack_height(Z3_context ctx, int length, int pos){
+    int stack_height = get_stack_size(length);
+    
+    Z3_ast transition[stack_height*10];
+    Z3_ast neg_op[stack_height*2];
+    
+    for (int h = 0; h <= stack_height; h++){
+        for (int op = 0; op < 2; op++){
+            transition[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
+        }
+
+        for (int op = 0; op < 10; op++){
+            transition[h*(op+1)] = tn_path_variable(ctx, op, pos+1, h);
+        }
+    }
+
+    Z3_ast transition_prop = Z3_mk_or(ctx, stack_height*10, transition);
+    Z3_ast neg_op_prop = Z3_mk_or(ctx, stack_height*2, neg_op);
+
+    return Z3_mk_or(ctx, 2, (Z3_ast[]){transition_prop, neg_op_prop});
+}
+
+/**
+ * @brief φ4 : Règle de transition de hauteur pour l'encapsulation
+ * 
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_encapsulation_stack_height(Z3_context ctx, int length, int pos){
+    int stack_height = get_stack_size(length);
+
+    Z3_ast op_neg[stack_height*4];
+    Z3_ast encapsulation[stack_height*10];
+
+    for (int h = 0; h < stack_height; h++){
+        for (int op = 2; op < 6; op++){
+            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, stack_height));
+        }
+
+        for (int op = 0; op < 10; op++){
+            encapsulation[h*(op+1)] = tn_path_variable(ctx, op, pos+1, h+1);
+        }
+    }
+
+    Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_height*4, op_neg);
+    Z3_ast encapsulation_prop = Z3_mk_or(ctx, stack_height*10, encapsulation);
+
+    return Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, encapsulation_prop});
+}
+
+/**
+ * @brief φ5 : Règle de transition de hauteur pour la décapsulation
+ * 
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos){
+    int stack_heigth = get_stack_size(length);
+
+    Z3_ast op_neg[stack_heigth*4];
+    Z3_ast decapsulation[stack_heigth*10];
+
+    for (int h = 0; h < stack_heigth; h++){
+        for (int op = 6; op < 10; op++){
+            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(op, op, pos, h));
+        }
+
+        for (int op = 0; op < 10; op++){
+            decapsulation[h*(op+1)] = tn_path_variable(ctx, op, pos+1, h-1);
+        }
+    }
+
+    Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_heigth*4, op_neg);
+    Z3_ast decapsulation_prop = Z3_mk_or(ctx, stack_heigth*10, decapsulation);
+
+    return Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, decapsulation_prop});
 }
 
 /**
