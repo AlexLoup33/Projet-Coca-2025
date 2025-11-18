@@ -134,7 +134,25 @@ Z3_ast tn_init_final_stack(Z3_context ctx, int length){
  * @return Z3_ast
  */
 Z3_ast tn_transition_stack_height(Z3_context ctx, int length, int pos){
-    return Z3_mk_false(ctx);
+    int stack_size = get_stack_size(length);
+
+    Z3_ast res[stack_size];
+    for (int h = 0; h < stack_size; h++){
+        Z3_ast transmit_neg[2];
+        transmit_neg[0] = Z3_mk_not(ctx, tn_path_variable(ctx, 0, pos, h));
+        transmit_neg[1] = Z3_mk_not(ctx, tn_path_variable(ctx, 1, pos, h));
+
+        Z3_ast transmit_prop = Z3_mk_or(ctx, 2, transmit_neg);
+
+        Z3_ast same_height[10];
+        for (int op = 0; op < 10; op++){
+            same_height[op] = tn_path_variable(ctx, op, pos+1, h);
+        }
+        Z3_ast same_height_prop = Z3_mk_or(ctx, 10, same_height);
+
+        res[h] = Z3_mk_and(ctx, 2, (Z3_ast[]){transmit_prop, same_height_prop});
+    }
+    return Z3_mk_and(ctx, stack_size, res);
 }
 
 /**
@@ -147,23 +165,23 @@ Z3_ast tn_transition_stack_height(Z3_context ctx, int length, int pos){
 Z3_ast tn_encapsulation_stack_height(Z3_context ctx, int length, int pos){
     int stack_height = get_stack_size(length);
 
-    Z3_ast op_neg[stack_height*4];
-    Z3_ast encapsulation[stack_height*10];
-
+    Z3_ast res[stack_height];
     for (int h = 0; h < stack_height; h++){
-        for (int op = 2; op < 6; op++){
-            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, stack_height));
+        Z3_ast op_neg[stack_height*4];
+        Z3_ast encapsulation[stack_height*10];
+
+        for (int op = 6; op < 10; op++){
+            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
         }
 
         for (int op = 0; op < 10; op++){
             encapsulation[h*(op+1)] = tn_path_variable(ctx, op, pos+1, h+1);
         }
+        Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_height*4, op_neg);
+        Z3_ast encapsulation_prop = Z3_mk_or(ctx, stack_height*10, encapsulation);
+        res[h] = Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, encapsulation_prop});
     }
-
-    Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_height*4, op_neg);
-    Z3_ast encapsulation_prop = Z3_mk_or(ctx, stack_height*10, encapsulation);
-
-    return Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, encapsulation_prop});
+    return Z3_mk_and(ctx, stack_height, res);
 }
 
 /**
@@ -176,23 +194,78 @@ Z3_ast tn_encapsulation_stack_height(Z3_context ctx, int length, int pos){
 Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos){
     int stack_heigth = get_stack_size(length);
 
-    Z3_ast op_neg[stack_heigth*4];
-    Z3_ast decapsulation[stack_heigth*10];
+    Z3_ast res[stack_heigth];
+    for (int h = 1; h < stack_heigth; h++){
+        Z3_ast op_neg[stack_heigth*4];
+        Z3_ast decapsulation[stack_heigth*10];
 
-    for (int h = 0; h < stack_heigth; h++){
-        for (int op = 6; op < 10; op++){
-            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
+        for (int op = 4; op < 8; op++){
+            op_neg[(h-1)*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
         }
 
         for (int op = 0; op < 10; op++){
-            decapsulation[h*(op+1)] = tn_path_variable(ctx, op, pos+1, h-1);
+            decapsulation[(h-1)*(op+1)] = tn_path_variable(ctx, op, pos+1, h-1);
         }
+
+        Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_heigth*4, op_neg);
+        Z3_ast decapsulation_prop = Z3_mk_or(ctx, stack_heigth*10, decapsulation);
+        res[h-1] = Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, decapsulation_prop});
     }
+    return Z3_mk_and(ctx, stack_heigth-1, res);
+}
 
-    Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_heigth*4, op_neg);
-    Z3_ast decapsulation_prop = Z3_mk_or(ctx, stack_heigth*10, decapsulation);
+/**
+ * @brief φ6 : Cohérence du contenu de pile (exactement avec un protocole (4 ou 6)
+ * 
+ * @param ctx The solver context.
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast 
+ */
+Z3_ast tn_stack_content_coherence(Z3_context ctx, int length, int pos){
+    int stack_size = get_stack_size(length);
 
-    return Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, decapsulation_prop});
+    Z3_ast res[stack_size];
+    for (int h = 0; h < stack_size; h++){
+        Z3_ast not_exist_op[10];
+        for (int op = 0; op < 10; op++){
+            not_exist_op[op] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
+        }
+
+        Z3_ast stack_content[h];
+        // Equivalence entre tn_4_variable et tn_6_variable pour argument h, pos
+        for (int k = 0; k < h; k++){
+            stack_content[k] = Z3_mk_and(ctx, 2, (Z3_ast[]){
+                Z3_mk_or(ctx, 2, (Z3_ast[]){
+                    Z3_mk_not(ctx, tn_4_variable(ctx, pos, k)),
+                    tn_6_variable(ctx, pos, k)
+                }),
+                Z3_mk_or(ctx, 2, (Z3_ast[]){
+                    tn_4_variable(ctx, pos, k),
+                    Z3_mk_not(ctx, tn_6_variable(ctx, pos, k))
+                })
+            });
+        }
+        Z3_ast stack_content_prop = Z3_mk_and(ctx, h, stack_content);
+        Z3_ast not_exist_op_prop = Z3_mk_or(ctx, 10, not_exist_op);
+        res[h] = Z3_mk_and(ctx, 2, (Z3_ast[]){not_exist_op_prop, stack_content_prop});
+    }
+    return Z3_mk_and(ctx, stack_size, res);
+}
+
+/**
+ * @brief φ7 : Conditions nécessaires pour qu'une opération soit réalisable
+ * 
+ * @param ctx The solver context.
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast 
+ */
+Z3_ast tn_operation_feasibility(Z3_context ctx, int length, int pos){
+    int stack_size = get_stack_size(length);
+    Z3_ast res[10*2];
+
+    return Z3_mk_false(ctx);
 }
 
 Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
