@@ -134,7 +134,7 @@ Z3_ast tn_init_final_stack(Z3_context ctx, int length){
  * @return Z3_ast
  */
 Z3_ast tn_transition_stack_height(Z3_context ctx, int length, int pos){
-    int stack_height = get_stack_size(length);
+    return Z3_mk_false(ctx);
 }
 
 /**
@@ -181,7 +181,7 @@ Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos){
 
     for (int h = 0; h < stack_heigth; h++){
         for (int op = 6; op < 10; op++){
-            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(op, op, pos, h));
+            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
         }
 
         for (int op = 0; op < 10; op++){
@@ -197,7 +197,7 @@ Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos){
 
 Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
 {
-    return tn_exist_uniqueOp_uniqueHeight(ctx, length, get_stack_size(length));
+    return tn_exist_uniqueOp_uniqueHeight(ctx, length);
 }
 
 void tn_get_path_from_model(Z3_context ctx, Z3_model model, TunnelNetwork network, int bound, tn_step *path)
