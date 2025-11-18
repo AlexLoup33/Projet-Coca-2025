@@ -49,6 +49,17 @@ Z3_ast tn_6_variable(Z3_context ctx, int pos, int height)
 }
 
 /**
+ * @brief Wrapper to have the correct size of the array representing the stack (correct cells of the stack will be from 0 to (get_stack_size(length)-1)).
+ *
+ * @param length The length of the sought path.
+ * @return int
+ */
+int get_stack_size(int length)
+{
+    return length / 2 + 1;
+}
+
+/**
  * @brief φ1 : Existence, unique opération et unique hauteur.
  * 
  * @param ctx The solver context.
@@ -182,17 +193,6 @@ Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos){
     Z3_ast decapsulation_prop = Z3_mk_or(ctx, stack_heigth*10, decapsulation);
 
     return Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, decapsulation_prop});
-}
-
-/**
- * @brief Wrapper to have the correct size of the array representing the stack (correct cells of the stack will be from 0 to (get_stack_size(length)-1)).
- *
- * @param length The length of the sought path.
- * @return int
- */
-int get_stack_size(int length)
-{
-    return length / 2 + 1;
 }
 
 Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
