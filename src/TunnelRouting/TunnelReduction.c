@@ -58,45 +58,34 @@ Z3_ast tn_6_variable(Z3_context ctx, int pos, int height)
 Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length){
     int stack_size = get_stack_size(length);
 
-    Z3_ast left[length*stack_size*10];
-    Z3_ast right[length*stack_size*stack_size*10*10];
+    Z3_ast res[length];
+    for (int i = 0; i < length; i++){
+        Z3_ast existence[stack_size * 10];
 
-
-    int indexL = 0;
-    int indexR = 0;
-    // Pour tout i de 0 à l
-    for (unsigned int i = 0; i < length; i++){
-        
-        //Proposition de gauche
-
-        // Il existe op E Op
-        for (unsigned int op = 0; op < 10; op++){
-            // Il existe h entre 0 et hmax
-            for (unsigned int h = 0; h < stack_size; h++){
-                left[indexL] = tn_path_variable(ctx, op, i, h);
-                indexL++;
+        for (int h = 0; h < stack_size; h++){
+            for (int op = 0; op < 10; op++){
+                existence[h*10 + op] = tn_path_variable(ctx, op, i, h);
             }
         }
+        Z3_ast existence_prop = Z3_mk_or(ctx, stack_size * 10, existence);
 
+        // Unique couple (op, height)
+        Z3_ast unique[ (stack_size * 10) * ( (stack_size * 10) - 1) / 2 ];
         int index = 0;
-        // Proposition de droite
-        for (unsigned op = 0; op < 10; op++){
-            for (unsigned opP = 0; opP < 10; op++){
-                for (unsigned int h = 0; h < stack_size; h++){
-                    for (unsigned hP = 0; hP < stack_size; h++){
-                        if ((op, h) != (opP, hP)){
-                            right[indexR] = Z3_mk_or(ctx, 2, (Z3_ast[]){Z3_mk_not(ctx, tn_path_variable(ctx, op, i, h)), Z3_mk_not(ctx, tn_path_variable(ctx, opP, i, hP))});
+        for (int h1 = 0; h1 < stack_size; h1++){
+            for (int op1 = 0; op1 < 10; op1++){
+                for (int h2 = 0; h2 < stack_size; h2++){
+                    for (int op2 = 0; op2 < 10; op2++){
+                        if (h1 != h2 || op1 != op2){
+                            unique[index++] = Z3_mk_or(ctx, 2, (Z3_ast[]){Z3_mk_not(ctx, tn_path_variable(ctx, op1, i, h1)), Z3_mk_not(ctx, tn_path_variable(ctx, op2, i, h2))});
                         }
                     }
                 }
             }
-        } 
+        }
+        res[i] = Z3_mk_and(ctx, 2, (Z3_ast[]){existence_prop, Z3_mk_and(ctx, (stack_size * 10) * ( (stack_size * 10) - 1) / 2, unique)});
     }
-
-    Z3_ast left_prop = Z3_mk_or(ctx, indexL, left);
-    Z3_ast right_prop = Z3_mk_and(ctx, indexR, right);
-
-    return Z3_mk_and(ctx, 2, (Z3_ast[]){left_prop, right_prop});
+    return Z3_mk_and(ctx, length, res);
 }
 
 /**
@@ -107,7 +96,23 @@ Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length){
  * @return Z3_ast
  */
 Z3_ast tn_init_final_stack(Z3_context ctx, int length){
-    Z3_mk_and(ctx, 2, (Z3_ast[]){tn_4_variable(ctx, 0, 0), tn_4_variable(ctx, length, 0)});
+    int stack_size = get_stack_size(length);
+
+    Z3_ast init_stack = Z3_mk_and(ctx, 2, (Z3_ast[]){
+        tn_path_variable(ctx, 0, 0, 0),
+        tn_4_variable(ctx, 0, 0)
+    });
+    Z3_ast final_stack[stack_size];
+
+    for (int op = 0; op < stack_size; op++){
+        final_stack[op] = Z3_mk_and(ctx, 2, (Z3_ast[]){
+            tn_path_variable(ctx, 0, length, 0),
+            tn_4_variable(ctx, length, 0)
+        });
+    }
+
+    Z3_ast final_stack_prop = Z3_mk_or(ctx, stack_size, final_stack);
+    return Z3_mk_and(ctx, 2, (Z3_ast[]){init_stack, final_stack_prop});
 }
 
 /**
@@ -119,24 +124,6 @@ Z3_ast tn_init_final_stack(Z3_context ctx, int length){
  */
 Z3_ast tn_transition_stack_height(Z3_context ctx, int length, int pos){
     int stack_height = get_stack_size(length);
-    
-    Z3_ast transition[stack_height*10];
-    Z3_ast neg_op[stack_height*2];
-    
-    for (int h = 0; h <= stack_height; h++){
-        for (int op = 0; op < 2; op++){
-            transition[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
-        }
-
-        for (int op = 0; op < 10; op++){
-            transition[h*(op+1)] = tn_path_variable(ctx, op, pos+1, h);
-        }
-    }
-
-    Z3_ast transition_prop = Z3_mk_or(ctx, stack_height*10, transition);
-    Z3_ast neg_op_prop = Z3_mk_or(ctx, stack_height*2, neg_op);
-
-    return Z3_mk_or(ctx, 2, (Z3_ast[]){transition_prop, neg_op_prop});
 }
 
 /**
