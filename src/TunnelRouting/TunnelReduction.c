@@ -263,9 +263,39 @@ Z3_ast tn_stack_content_coherence(Z3_context ctx, int length, int pos){
  */
 Z3_ast tn_operation_feasibility(Z3_context ctx, int length, int pos){
     int stack_size = get_stack_size(length);
-    Z3_ast res[10*2];
+    if (stack_size == 0) {
+        return Z3_mk_true(ctx);
+    }
+    int nodes_for_4[] = {0, 2, 4, 6, 8};
+    int nb_nodes_for_4 = 5;
 
-    return Z3_mk_false(ctx);
+    int nodes_for_6[] = {1, 3, 5, 7, 9};
+    int nb_nodes_for_6 = 5;
+
+    // une pour 4, une pour 6
+    Z3_ast constraints[2 * stack_size];
+    int k = 0;
+    for (int h = 0; h < stack_size; h++) {
+    
+        // cas a = 4
+        Z3_ast conditions_4[nb_nodes_for_4];
+        for (int i = 0; i < nb_nodes_for_4; i++) {
+            conditions_4[i] = tn_path_variable(ctx, nodes_for_4[i], pos, h);
+        }
+        Z3_ast premise_4 = Z3_mk_or(ctx, nb_nodes_for_4, conditions_4);
+        Z3_ast y4 = tn_4_variable(ctx, pos, h);
+        constraints[k++] = Z3_mk_implies(ctx, premise_4, y4);
+
+        // cas a = 6
+        Z3_ast conditions_6[nb_nodes_for_6];
+        for (int i = 0; i < nb_nodes_for_6; i++) {
+            conditions_6[i] = tn_path_variable(ctx, nodes_for_6[i], pos, h);
+        }
+        Z3_ast premise_6 = Z3_mk_or(ctx, nb_nodes_for_6, conditions_6);
+        Z3_ast y6 = tn_6_variable(ctx, pos, h);
+        constraints[k++] = Z3_mk_implies(ctx, premise_6, y6);
+    }
+    return Z3_mk_and(ctx, k, constraints);
 }
 
 Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
