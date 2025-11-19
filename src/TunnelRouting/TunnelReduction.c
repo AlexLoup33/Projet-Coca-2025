@@ -154,24 +154,35 @@ Z3_ast tn_init_final_stack(Z3_context ctx, int length){
 Z3_ast tn_transition_stack_height(Z3_context ctx, int length, int pos){
     int stack_size = get_stack_size(length);
 
-    Z3_ast res[stack_size];
-    for (int h = 0; h < stack_size; h++){
-        Z3_ast transmit_neg[2];
-        transmit_neg[0] = Z3_mk_not(ctx, tn_path_variable(ctx, 0, pos, h));
-        transmit_neg[1] = Z3_mk_not(ctx, tn_path_variable(ctx, 1, pos, h));
+    Z3_ast *constraints = malloc(stack_size * sizeof(Z3_ast));
 
-        Z3_ast transmit_prop = Z3_mk_or(ctx, 2, transmit_neg);
+    for (int h = 0; h < stack_size; h++) {
 
-        Z3_ast same_height[10];
-        for (int op = 0; op < 10; op++){
-            same_height[op] = tn_path_variable(ctx, op, pos+1, h);
+        // conditions : x_{0,pos,h} ∨ x_{1,pos,h}
+        Z3_ast cond[2] = {
+            tn_path_variable(ctx, 0, pos, h),
+            tn_path_variable(ctx, 1, pos, h)
+        };
+        Z3_ast condition = Z3_mk_or(ctx, 2, cond);
+
+        // Si on transmet à la position pos avec hauteur h, alors à la position pos+1, la hauteur doit rester h.
+        Z3_ast *at_next = malloc(10 * sizeof(Z3_ast));
+        for (int op = 0; op < 10; op++) {
+            at_next[op] = tn_path_variable(ctx, op, pos + 1, h);
         }
-        Z3_ast same_height_prop = Z3_mk_or(ctx, 10, same_height);
+        Z3_ast next_height_ok = Z3_mk_or(ctx, 10, at_next);
 
-        res[h] = Z3_mk_and(ctx, 2, (Z3_ast[]){transmit_prop, same_height_prop});
+        // implication
+        constraints[h] = Z3_mk_implies(ctx, condition, next_height_ok);
+
+        free(at_next);
     }
-    return Z3_mk_and(ctx, stack_size, res);
+
+    Z3_ast result = Z3_mk_and(ctx, stack_size, constraints);
+    free(constraints);
+    return result;
 }
+
 
 /**
  * @brief φ4 : Règle de transition de hauteur pour l'encapsulation
@@ -318,7 +329,20 @@ Z3_ast tn_operation_feasibility(Z3_context ctx, int length, int pos){
 
 Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
 {
-    return tn_exist_uniqueOp_uniqueHeight(ctx, length);
+    Z3_ast f1 = tn_exist_uniqueOp_uniqueHeight(ctx, length);
+    Z3_ast f2 = tn_init_final_stack(ctx, length);
+
+    //appliqué pour chaque position pos = 0..length-1
+    Z3_ast *f3_parts = malloc(length * sizeof(Z3_ast));
+    for (int pos = 0; pos < length; pos++) {
+        f3_parts[pos] = tn_transition_stack_height(ctx, length, pos);
+    }
+    Z3_ast f3 = Z3_mk_and(ctx, length, f3_parts);
+    free(f3_parts);
+
+    return Z3_mk_and(ctx, 3, (Z3_ast[]){
+        f1, f2, f3
+    });
 }
 
 void tn_get_path_from_model(Z3_context ctx, Z3_model model, TunnelNetwork network, int bound, tn_step *path)
