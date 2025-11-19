@@ -282,18 +282,18 @@ Z3_ast tn_operation_feasibility(Z3_context ctx, int length, int pos){
         for (int i = 0; i < nb_nodes_for_4; i++) {
             conditions_4[i] = tn_path_variable(ctx, nodes_for_4[i], pos, h);
         }
-        Z3_ast premise_4 = Z3_mk_or(ctx, nb_nodes_for_4, conditions_4);
+        Z3_ast condition_4 = Z3_mk_or(ctx, nb_nodes_for_4, conditions_4);
         Z3_ast y4 = tn_4_variable(ctx, pos, h);
-        constraints[k++] = Z3_mk_implies(ctx, premise_4, y4);
+        constraints[k++] = Z3_mk_implies(ctx, condition_4, y4);
 
         // cas a = 6
         Z3_ast conditions_6[nb_nodes_for_6];
         for (int i = 0; i < nb_nodes_for_6; i++) {
             conditions_6[i] = tn_path_variable(ctx, nodes_for_6[i], pos, h);
         }
-        Z3_ast premise_6 = Z3_mk_or(ctx, nb_nodes_for_6, conditions_6);
+        Z3_ast condition_6 = Z3_mk_or(ctx, nb_nodes_for_6, conditions_6);
         Z3_ast y6 = tn_6_variable(ctx, pos, h);
-        constraints[k++] = Z3_mk_implies(ctx, premise_6, y6);
+        constraints[k++] = Z3_mk_implies(ctx, condition_6, y6);
     }
     return Z3_mk_and(ctx, k, constraints);
 }
