@@ -1,6 +1,7 @@
 #include "TunnelReduction.h"
 #include "Z3Tools.h"
 #include "stdio.h"
+#include <stdlib.h>
 
 /**
  * @brief Creates the variable "x_{node,pos,stack_height}" of the reduction (described in the subject).
@@ -68,36 +69,53 @@ int get_stack_size(int length)
  */
 Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length){
     int stack_size = get_stack_size(length);
+    int num_nodes = 10;
+    int num_vars = stack_size * num_nodes;
 
-    Z3_ast res[length];
-    for (int i = 0; i < length; i++){
-        Z3_ast existence[stack_size * 10];
+    int num_positions = length + 1;  // 0..length
 
-        for (int h = 0; h < stack_size; h++){
-            for (int op = 0; op < 10; op++){
-                existence[h*10 + op] = tn_path_variable(ctx, op, i, h);
+    Z3_ast *pos_constraints = malloc(num_positions * sizeof(Z3_ast));
+
+    for (int i = 0; i <= length; i++) {
+        // 1) Liste de toutes les variables x_{op,i,h}
+        Z3_ast *vars = malloc(num_vars * sizeof(Z3_ast));
+        int idx = 0;
+        for (int h = 0; h < stack_size; h++) {
+            for (int op = 0; op < num_nodes; op++) {
+                vars[idx++] = tn_path_variable(ctx, op, i, h);
             }
         }
-        Z3_ast existence_prop = Z3_mk_or(ctx, stack_size * 10, existence);
 
-        // Unique couple (op, height)
-        Z3_ast unique[ (stack_size * 10) * ( (stack_size * 10) - 1) / 2 ];
-        int index = 0;
-        for (int h1 = 0; h1 < stack_size; h1++){
-            for (int op1 = 0; op1 < 10; op1++){
-                for (int h2 = 0; h2 < stack_size; h2++){
-                    for (int op2 = 0; op2 < 10; op2++){
-                        if (h1 != h2 || op1 != op2){
-                            unique[index++] = Z3_mk_or(ctx, 2, (Z3_ast[]){Z3_mk_not(ctx, tn_path_variable(ctx, op1, i, h1)), Z3_mk_not(ctx, tn_path_variable(ctx, op2, i, h2))});
-                        }
-                    }
-                }
+        // 2) "Au moins une"
+        Z3_ast existence = Z3_mk_or(ctx, num_vars, vars);
+
+        // 3) "Au plus une"
+        int num_pairs = num_vars * (num_vars - 1) / 2;
+        Z3_ast *clauses = malloc(num_pairs * sizeof(Z3_ast));
+        int c = 0;
+        for (int p = 0; p < num_vars; p++) {
+            for (int q = p + 1; q < num_vars; q++) {
+                Z3_ast not_both[2] = {
+                    Z3_mk_not(ctx, vars[p]),
+                    Z3_mk_not(ctx, vars[q])
+                };
+                clauses[c++] = Z3_mk_or(ctx, 2, not_both);
             }
         }
-        res[i] = Z3_mk_and(ctx, 2, (Z3_ast[]){existence_prop, Z3_mk_and(ctx, (stack_size * 10) * ( (stack_size * 10) - 1) / 2, unique)});
+        Z3_ast uniq = Z3_mk_and(ctx, num_pairs, clauses);
+
+        pos_constraints[i] = Z3_mk_and(ctx, 2, (Z3_ast[]){existence, uniq});
+
+        free(vars);
+        free(clauses);
     }
-    return Z3_mk_and(ctx, length, res);
+
+    Z3_ast result = Z3_mk_and(ctx, num_positions, pos_constraints);
+    free(pos_constraints);
+    return result;
 }
+
+
 
 /**
  * @brief φ2 : Pile initiale et finale
