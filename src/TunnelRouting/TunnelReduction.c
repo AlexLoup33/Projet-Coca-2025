@@ -64,12 +64,13 @@ int get_stack_size(int length)
  * @brief φ1 : Existence, unique opération et unique hauteur.
  * 
  * @param ctx The solver context.
+ * @param network The graph
  * @param length The length of the sought path.
  * @return Z3_ast
  */
-Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length){
+Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, const TunnelNetwork network, int length){
     int stack_size = get_stack_size(length);
-    int num_nodes = 10;
+    int num_nodes = tn_get_num_nodes(network);
     int num_vars = stack_size * num_nodes;
 
     int num_positions = length + 1;  // 0..length
@@ -121,28 +122,28 @@ Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, int length){
  * @brief φ2 : Pile initiale et finale
  * 
  * @param ctx The solver context.
+ * @param network The graph
  * @param length The length of the sought path.
  * @return Z3_ast
  */
-Z3_ast tn_init_final_stack(Z3_context ctx, int length){
-    int stack_size = get_stack_size(length);
+Z3_ast tn_init_final_stack(Z3_context ctx, const TunnelNetwork network, int length)
+{
+    int init  = tn_get_initial(network);
+    int final = tn_get_final(network);
 
-    Z3_ast init_stack = Z3_mk_and(ctx, 2, (Z3_ast[]){
-        tn_path_variable(ctx, 0, 0, 0),
+    Z3_ast init_state = Z3_mk_and(ctx, 2, (Z3_ast[]){
+        tn_path_variable(ctx, init, 0, 0),
         tn_4_variable(ctx, 0, 0)
     });
-    Z3_ast final_stack[stack_size];
 
-    for (int op = 0; op < stack_size; op++){
-        final_stack[op] = Z3_mk_and(ctx, 2, (Z3_ast[]){
-            tn_path_variable(ctx, 0, length, 0),
-            tn_4_variable(ctx, length, 0)
-        });
-    }
+    Z3_ast final_state = Z3_mk_and(ctx, 2, (Z3_ast[]){
+        tn_path_variable(ctx, final, length, 0),
+        tn_4_variable(ctx, length, 0)
+    });
 
-    Z3_ast final_stack_prop = Z3_mk_or(ctx, stack_size, final_stack);
-    return Z3_mk_and(ctx, 2, (Z3_ast[]){init_stack, final_stack_prop});
+    return Z3_mk_and(ctx, 2, (Z3_ast[]){ init_state, final_state });
 }
+
 
 /**
  * @brief φ3 : Règle de transition de hauteur pour la Transmission
@@ -192,25 +193,46 @@ Z3_ast tn_transition_stack_height(Z3_context ctx, int length, int pos){
  * @return Z3_ast
  */
 Z3_ast tn_encapsulation_stack_height(Z3_context ctx, int length, int pos){
-    int stack_height = get_stack_size(length);
+    int stack_size = get_stack_size(length);
 
-    Z3_ast res[stack_height];
-    for (int h = 0; h < stack_height; h++){
-        Z3_ast op_neg[stack_height*4];
-        Z3_ast encapsulation[stack_height*10];
-
-        for (int op = 6; op < 10; op++){
-            op_neg[h*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
-        }
-
-        for (int op = 0; op < 10; op++){
-            encapsulation[h*(op+1)] = tn_path_variable(ctx, op, pos+1, h+1);
-        }
-        Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_height*4, op_neg);
-        Z3_ast encapsulation_prop = Z3_mk_or(ctx, stack_height*10, encapsulation);
-        res[h] = Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, encapsulation_prop});
+    // si la pile est trop petite, aucun push possible
+    if (stack_size <= 1) {
+        return Z3_mk_true(ctx);
     }
-    return Z3_mk_and(ctx, stack_height, res);
+
+    // on aura une contrainte par hauteur h : 0..stack_size-2
+    int num_heights = stack_size - 1;
+    Z3_ast *constraints = malloc(num_heights * sizeof(Z3_ast));
+
+    for (int h = 0; h < num_heights; h++) {
+
+        // prémisse : "on fait un push à (pos,h)"
+        // x_{2,pos,h} ∨ x_{3,pos,h} ∨ x_{4,pos,h} ∨ x_{5,pos,h}
+        Z3_ast prem[4] = {
+            tn_path_variable(ctx, 2, pos, h),
+            tn_path_variable(ctx, 3, pos, h),
+            tn_path_variable(ctx, 4, pos, h),
+            tn_path_variable(ctx, 5, pos, h)
+        };
+        Z3_ast premise = Z3_mk_or(ctx, 4, prem);
+
+        // conclusion :
+        //  ∨_{op=0..9} x_{op,pos+1,h+1}
+        Z3_ast *at_next = malloc(10 * sizeof(Z3_ast));
+        for (int op = 0; op < 10; op++) {
+            at_next[op] = tn_path_variable(ctx, op, pos + 1, h + 1);
+        }
+        Z3_ast next_height_ok = Z3_mk_or(ctx, 10, at_next);
+
+        // implication : (push à h) ⇒ (hauteur h+1 au pas suivant)
+        constraints[h] = Z3_mk_implies(ctx, premise, next_height_ok);
+
+        free(at_next);
+    }
+
+    Z3_ast result = Z3_mk_and(ctx, num_heights, constraints);
+    free(constraints);
+    return result;
 }
 
 /**
@@ -220,28 +242,47 @@ Z3_ast tn_encapsulation_stack_height(Z3_context ctx, int length, int pos){
  * @param pos The current position in the path.
  * @return Z3_ast
  */
-Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos){
-    int stack_heigth = get_stack_size(length);
+Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos)
+{
+    int stack_size = get_stack_size(length);
 
-    Z3_ast res[stack_heigth];
-    for (int h = 1; h < stack_heigth; h++){
-        Z3_ast op_neg[stack_heigth*4];
-        Z3_ast decapsulation[stack_heigth*10];
-
-        for (int op = 4; op < 8; op++){
-            op_neg[(h-1)*(op+1)] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
-        }
-
-        for (int op = 0; op < 10; op++){
-            decapsulation[(h-1)*(op+1)] = tn_path_variable(ctx, op, pos+1, h-1);
-        }
-
-        Z3_ast op_neg_prop = Z3_mk_or(ctx, stack_heigth*4, op_neg);
-        Z3_ast decapsulation_prop = Z3_mk_or(ctx, stack_heigth*10, decapsulation);
-        res[h-1] = Z3_mk_and(ctx, 2, (Z3_ast[]){op_neg_prop, decapsulation_prop});
+    // on ne peut décapsuler que si la pile a au moins 2 cases
+    if (stack_size <= 1) {
+        return Z3_mk_true(ctx);
     }
-    return Z3_mk_and(ctx, stack_heigth-1, res);
+
+    int decap_ops[] = {6, 7, 8, 9};
+    int nb_decap_ops = 4;
+
+    int num_heights = stack_size - 1;           // h = 1..stack_size-1
+    Z3_ast *constraints = malloc(num_heights * sizeof(Z3_ast));
+
+    for (int h = 1; h < stack_size; h++) {
+
+        // condition : on fait une opération de décapsulation à (pos, h)
+        Z3_ast cond[nb_decap_ops];
+        for (int i = 0; i < nb_decap_ops; i++) {
+            cond[i] = tn_path_variable(ctx, decap_ops[i], pos, h);
+        }
+        Z3_ast premise = Z3_mk_or(ctx, nb_decap_ops, cond);
+
+        //à pos+1, la hauteur devient h-1 (quelque soit l'op)
+        Z3_ast *at_next = malloc(10 * sizeof(Z3_ast));
+        for (int op = 0; op < 10; op++) {
+            at_next[op] = tn_path_variable(ctx, op, pos + 1, h - 1);
+        }
+        Z3_ast next_height_ok = Z3_mk_or(ctx, 10, at_next);
+
+        constraints[h - 1] = Z3_mk_implies(ctx, premise, next_height_ok);
+
+        free(at_next);
+    }
+
+    Z3_ast result = Z3_mk_and(ctx, num_heights, constraints);
+    free(constraints);
+    return result;
 }
+
 
 /**
  * @brief φ6 : Cohérence du contenu de pile (exactement avec un protocole (4 ou 6)
@@ -251,36 +292,42 @@ Z3_ast tn_decapsulation_stack_height(Z3_context ctx, int length, int pos){
  * @param pos The current position in the path.
  * @return Z3_ast 
  */
-Z3_ast tn_stack_content_coherence(Z3_context ctx, int length, int pos){
+Z3_ast tn_stack_content_coherence(Z3_context ctx, int length, int pos)
+{
     int stack_size = get_stack_size(length);
 
-    Z3_ast res[stack_size];
-    for (int h = 0; h < stack_size; h++){
-        Z3_ast not_exist_op[10];
-        for (int op = 0; op < 10; op++){
-            not_exist_op[op] = Z3_mk_not(ctx, tn_path_variable(ctx, op, pos, h));
-        }
+    Z3_ast *constraints = malloc(stack_size * sizeof(Z3_ast));
 
-        Z3_ast stack_content[h];
-        // Equivalence entre tn_4_variable et tn_6_variable pour argument h, pos
-        for (int k = 0; k < h; k++){
-            stack_content[k] = Z3_mk_and(ctx, 2, (Z3_ast[]){
-                Z3_mk_or(ctx, 2, (Z3_ast[]){
-                    Z3_mk_not(ctx, tn_4_variable(ctx, pos, k)),
-                    tn_6_variable(ctx, pos, k)
-                }),
-                Z3_mk_or(ctx, 2, (Z3_ast[]){
-                    tn_4_variable(ctx, pos, k),
-                    Z3_mk_not(ctx, tn_6_variable(ctx, pos, k))
-                })
-            });
+    for (int h = 0; h < stack_size; h++) {
+
+        // "il y a un état à la hauteur h"
+        Z3_ast nodes_here[10];
+        for (int op = 0; op < 10; op++) {
+            nodes_here[op] = tn_path_variable(ctx, op, pos, h);
         }
-        Z3_ast stack_content_prop = Z3_mk_and(ctx, h, stack_content);
-        Z3_ast not_exist_op_prop = Z3_mk_or(ctx, 10, not_exist_op);
-        res[h] = Z3_mk_and(ctx, 2, (Z3_ast[]){not_exist_op_prop, stack_content_prop});
+        Z3_ast node_here = Z3_mk_or(ctx, 10, nodes_here);
+
+        // variables de contenu de pile
+        Z3_ast y4 = tn_4_variable(ctx, pos, h);
+        Z3_ast y6 = tn_6_variable(ctx, pos, h);
+
+        // XOR : exactement un de y4, y6 est vrai
+        Z3_ast at_least_one = Z3_mk_or(ctx, 2, (Z3_ast[]){ y4, y6 });
+        Z3_ast at_most_one  = Z3_mk_or(ctx, 2, (Z3_ast[]){
+            Z3_mk_not(ctx, y4),
+            Z3_mk_not(ctx, y6)
+        });
+        Z3_ast exactly_one = Z3_mk_and(ctx, 2, (Z3_ast[]){ at_least_one, at_most_one });
+
+        // si on a un état à cette hauteur, alors exactement un protocole
+        constraints[h] = Z3_mk_implies(ctx, node_here, exactly_one);
     }
-    return Z3_mk_and(ctx, stack_size, res);
+
+    Z3_ast result = Z3_mk_and(ctx, stack_size, constraints);
+    free(constraints);
+    return result;
 }
+
 
 /**
  * @brief φ7 : Conditions nécessaires pour qu'une opération soit réalisable
@@ -327,12 +374,83 @@ Z3_ast tn_operation_feasibility(Z3_context ctx, int length, int pos){
     return Z3_mk_and(ctx, k, constraints);
 }
 
+/**
+ * @brief edge : si on est à (u, pos, h), alors à pos+1 on doit être dans un successeur de u
+ * @param ctx The solver context.
+ * @param network The graph
+ * @param length The length of the sought path.
+ * @return Z3_ast
+ */
+Z3_ast tn_edge_constraints(Z3_context ctx, const TunnelNetwork network, int length)
+{
+    int num_pos = length;                //0..length-1
+    int stack_size = get_stack_size(length);
+    int num_nodes = tn_get_num_nodes(network);
+
+    Z3_ast *pos_constraints = malloc(num_pos * sizeof(Z3_ast));
+
+    for (int pos = 0; pos < num_pos; pos++) {
+
+        Z3_ast *height_constraints = malloc(stack_size * sizeof(Z3_ast));
+
+        for (int h = 0; h < stack_size; h++) {
+
+            Z3_ast *node_constraints = malloc(num_nodes * sizeof(Z3_ast));
+
+            for (int u = 0; u < num_nodes; u++) {
+
+                // collecte toutes les successeurs v ode u
+                Z3_ast *succs = malloc(num_nodes * sizeof(Z3_ast));
+                int succ_count = 0;
+
+                for (int v = 0; v < num_nodes; v++) {
+                    if (tn_is_edge(network, u, v)) {
+                        succs[succ_count++] = tn_path_variable(ctx, v, pos + 1, h);
+                    }
+                }
+
+                Z3_ast implication;
+
+                if (succ_count == 0) {
+                    // pas de successeur, ne peut pas etre à u à pos,h
+                    implication = Z3_mk_not(ctx, tn_path_variable(ctx, u, pos, h));
+                } else {
+                    Z3_ast succ_or = Z3_mk_or(ctx, succ_count, succs);
+                    implication = Z3_mk_implies(
+                        ctx,
+                        tn_path_variable(ctx, u, pos, h),
+                        succ_or
+                    );
+                }
+
+                node_constraints[u] = implication;
+                free(succs);
+            }
+
+            height_constraints[h] =
+                Z3_mk_and(ctx, num_nodes, node_constraints);
+            free(node_constraints);
+        }
+
+        pos_constraints[pos] =
+            Z3_mk_and(ctx, stack_size, height_constraints);
+        free(height_constraints);
+    }
+
+    Z3_ast result = Z3_mk_and(ctx, num_pos, pos_constraints);
+    free(pos_constraints);
+    return result;
+}
+
 Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
 {
-    Z3_ast f1 = tn_exist_uniqueOp_uniqueHeight(ctx, length);
-    Z3_ast f2 = tn_init_final_stack(ctx, length);
+    // φ1 : existence + unicité (node, hauteur) à chaque position
+    Z3_ast f1 = tn_exist_uniqueOp_uniqueHeight(ctx, network, length);
 
-    //appliqué pour chaque position pos = 0..length-1
+    // φ2 : pile initiale et finale
+    Z3_ast f2 = tn_init_final_stack(ctx, network, length);
+
+    // φ3 : transmission (hauteur inchangée)
     Z3_ast *f3_parts = malloc(length * sizeof(Z3_ast));
     for (int pos = 0; pos < length; pos++) {
         f3_parts[pos] = tn_transition_stack_height(ctx, length, pos);
@@ -340,10 +458,48 @@ Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
     Z3_ast f3 = Z3_mk_and(ctx, length, f3_parts);
     free(f3_parts);
 
-    return Z3_mk_and(ctx, 3, (Z3_ast[]){
-        f1, f2, f3
-    });
+    // φ4 : encapsulation (push, h -> h+1)
+    Z3_ast *f4_parts = malloc(length * sizeof(Z3_ast));
+    for (int pos = 0; pos < length; pos++) {
+        f4_parts[pos] = tn_encapsulation_stack_height(ctx, length, pos);
+    }
+    Z3_ast f4 = Z3_mk_and(ctx, length, f4_parts);
+    free(f4_parts);
+
+    // φ5 : décapsulation (pop, h -> h-1)
+    Z3_ast *f5_parts = malloc(length * sizeof(Z3_ast));
+    for (int pos = 0; pos < length; pos++) {
+        f5_parts[pos] = tn_decapsulation_stack_height(ctx, length, pos);
+    }
+    Z3_ast f5 = Z3_mk_and(ctx, length, f5_parts);
+    free(f5_parts);
+
+    // φ6 : cohérence du contenu de pile
+    // positions 0..length (donc length+1 positions)
+    int num_pos_stack = length + 1;
+    Z3_ast *f6_parts = malloc(num_pos_stack * sizeof(Z3_ast));
+    for (int pos = 0; pos <= length; pos++) {
+        f6_parts[pos] = tn_stack_content_coherence(ctx, length, pos);
+    }
+    Z3_ast f6 = Z3_mk_and(ctx, num_pos_stack, f6_parts);
+    free(f6_parts);
+
+    // φ7 : conditions de faisabilité des opérations (liées à y4 / y6)
+    Z3_ast *f7_parts = malloc(length * sizeof(Z3_ast));
+    for (int pos = 0; pos < length; pos++) {
+        f7_parts[pos] = tn_operation_feasibility(ctx, length, pos);
+    }
+    Z3_ast f7 = Z3_mk_and(ctx, length, f7_parts);
+    free(f7_parts);
+
+    // Contraintes d’arêtes du graphe
+    Z3_ast f_edges = tn_edge_constraints(ctx, network, length);
+
+    // Conjonction globale de toutes les formules
+    Z3_ast all[8] = { f1, f2, f3, f4, f5, f6, f7, f_edges };
+    return Z3_mk_and(ctx, 8, all);
 }
+
 
 void tn_get_path_from_model(Z3_context ctx, Z3_model model, TunnelNetwork network, int bound, tn_step *path)
 {
