@@ -375,6 +375,212 @@ Z3_ast tn_operation_feasibility(Z3_context ctx, int length, int pos){
 }
 
 /**
+ * @brief φ8 : Evolution du contenu de la pile lors d'une transmission
+ *        Si on transmet à (pos, h) (opérations 0 ou 1), alors pour toutes
+ *        les hauteurs k < h, le contenu de pile (4/6) reste identique
+ *        entre pos et pos+1.
+ *
+ * @param ctx The solver context.
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_stack_content_transmission(Z3_context ctx, int length, int pos)
+{
+    int stack_size = get_stack_size(length);
+
+    if (stack_size == 0) {
+        return Z3_mk_true(ctx);
+    }
+
+    Z3_ast *constraints = malloc(stack_size * sizeof(Z3_ast));
+
+    for (int h = 0; h < stack_size; h++) {
+
+        // condition : on fait une transmission à (pos,h)
+        // (opérations 0 et 1)
+        Z3_ast cond_ops[2] = {
+            tn_path_variable(ctx, 0, pos, h),
+            tn_path_variable(ctx, 1, pos, h)
+        };
+        Z3_ast premise = Z3_mk_or(ctx, 2, cond_ops);
+
+        Z3_ast conclusion;
+
+        if (h == 0) {
+            // ∧_{k=0}^{-1} (...) = vrai : pas de cellule en dessous
+            conclusion = Z3_mk_true(ctx);
+        } else {
+            // k = 0 .. h-1  (donc h valeurs)
+            int num_k = h;
+            Z3_ast *eq_for_all_k = malloc(num_k * sizeof(Z3_ast));
+
+            for (int k = 0; k < h; k++) {
+
+                Z3_ast y4_now  = tn_4_variable(ctx, pos,     k);
+                Z3_ast y4_next = tn_4_variable(ctx, pos + 1, k);
+                Z3_ast y6_now  = tn_6_variable(ctx, pos,     k);
+                Z3_ast y6_next = tn_6_variable(ctx, pos + 1, k);
+
+                Z3_ast eq4 = Z3_mk_iff(ctx, y4_now,  y4_next);
+                Z3_ast eq6 = Z3_mk_iff(ctx, y6_now,  y6_next);
+
+                eq_for_all_k[k] = Z3_mk_and(ctx, 2, (Z3_ast[]){ eq4, eq6 });
+            }
+
+            conclusion = Z3_mk_and(ctx, num_k, eq_for_all_k);
+            free(eq_for_all_k);
+        }
+
+        constraints[h] = Z3_mk_implies(ctx, premise, conclusion);
+    }
+
+    Z3_ast result = Z3_mk_and(ctx, stack_size, constraints);
+    free(constraints);
+    return result;
+}
+
+/**
+ * @brief φ9 : Evolution du contenu de la pile lors d'une encapsulation
+ *        Si on encapsule à (pos, h) (opérations 2, 3, 4 ou 5),
+ *        alors pour toutes les hauteurs k ≤ h, le contenu de pile (4/6)
+ *        reste identique entre pos et pos+1.
+ *
+ * @param ctx The solver context.
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_stack_content_encapsulation(Z3_context ctx, int length, int pos)
+{
+    int stack_size = get_stack_size(length);
+
+    // pile trop petite -> pas de push possible
+    if (stack_size <= 1) {
+        return Z3_mk_true(ctx);
+    }
+
+    // on ne peut pousser que de h = 0 à stack_size-2
+    int num_heights = stack_size - 1;
+    Z3_ast *constraints = malloc(num_heights * sizeof(Z3_ast));
+
+    for (int h = 0; h < num_heights; h++) {
+
+        // condition : on fait une encapsulation à (pos,h)
+        // opérations 2, 3, 4, 5
+        Z3_ast cond_ops[4] = {
+            tn_path_variable(ctx, 2, pos, h),
+            tn_path_variable(ctx, 3, pos, h),
+            tn_path_variable(ctx, 4, pos, h),
+            tn_path_variable(ctx, 5, pos, h)
+        };
+        Z3_ast premise = Z3_mk_or(ctx, 4, cond_ops);
+
+        // conclusion :
+        // pour tout k = 0..h, y4(pos,k) <-> y4(pos+1,k)
+        // et y6(pos,k) <-> y6(pos+1,k)
+        int num_k = h + 1; // k = 0..h
+        Z3_ast *eq_for_all_k = malloc(num_k * sizeof(Z3_ast));
+
+        for (int k = 0; k <= h; k++) {
+
+            Z3_ast y4_now  = tn_4_variable(ctx, pos,     k);
+            Z3_ast y4_next = tn_4_variable(ctx, pos + 1, k);
+            Z3_ast y6_now  = tn_6_variable(ctx, pos,     k);
+            Z3_ast y6_next = tn_6_variable(ctx, pos + 1, k);
+
+            Z3_ast eq4 = Z3_mk_iff(ctx, y4_now,  y4_next);
+            Z3_ast eq6 = Z3_mk_iff(ctx, y6_now,  y6_next);
+
+            eq_for_all_k[k] = Z3_mk_and(ctx, 2, (Z3_ast[]){ eq4, eq6 });
+        }
+
+        Z3_ast conclusion = Z3_mk_and(ctx, num_k, eq_for_all_k);
+        free(eq_for_all_k);
+
+        constraints[h] = Z3_mk_implies(ctx, premise, conclusion);
+    }
+
+    Z3_ast result = Z3_mk_and(ctx, num_heights, constraints);
+    free(constraints);
+    return result;
+}
+
+/**
+ * @brief φ10 : Evolution du contenu de la pile lors d'une décapsulation
+ *        Si on décapsule à (pos, h) (opérations 6, 7, 8 ou 9),
+ *        alors pour toutes les hauteurs k < h, le contenu de pile (4/6)
+ *        reste identique entre pos et pos+1.
+ *
+ * @param ctx The solver context.
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_stack_content_decapsulation(Z3_context ctx, int length, int pos)
+{
+    int stack_size = get_stack_size(length);
+
+    // il faut au moins une pile de hauteur >= 1 pour pouvoir pop
+    if (stack_size <= 1) {
+        return Z3_mk_true(ctx);
+    }
+
+    // on ne peut décapsuler qu'à partir de h = 1
+    int num_heights = stack_size - 1; // h = 1..stack_size-1
+    Z3_ast *constraints = malloc(num_heights * sizeof(Z3_ast));
+
+    for (int h = 1; h < stack_size; h++) {
+
+        // condition : on fait une décapsulation à (pos,h)
+        // opérations 6, 7, 8, 9
+        Z3_ast cond_ops[4] = {
+            tn_path_variable(ctx, 6, pos, h),
+            tn_path_variable(ctx, 7, pos, h),
+            tn_path_variable(ctx, 8, pos, h),
+            tn_path_variable(ctx, 9, pos, h)
+        };
+        Z3_ast premise = Z3_mk_or(ctx, 4, cond_ops);
+
+        Z3_ast conclusion;
+
+        if (h == 0) {
+            // ne devrait pas arriver car on commence à h=1,
+            // mais par sécurité :
+            conclusion = Z3_mk_true(ctx);
+        } else {
+            // pour tout k = 0..h-1,
+            // y4(pos,k) <-> y4(pos+1,k)
+            // y6(pos,k) <-> y6(pos+1,k)
+            int num_k = h; // k = 0..h-1
+            Z3_ast *eq_for_all_k = malloc(num_k * sizeof(Z3_ast));
+
+            for (int k = 0; k < h; k++) {
+
+                Z3_ast y4_now  = tn_4_variable(ctx, pos,     k);
+                Z3_ast y4_next = tn_4_variable(ctx, pos + 1, k);
+                Z3_ast y6_now  = tn_6_variable(ctx, pos,     k);
+                Z3_ast y6_next = tn_6_variable(ctx, pos + 1, k);
+
+                Z3_ast eq4 = Z3_mk_iff(ctx, y4_now,  y4_next);
+                Z3_ast eq6 = Z3_mk_iff(ctx, y6_now,  y6_next);
+
+                eq_for_all_k[k] = Z3_mk_and(ctx, 2, (Z3_ast[]){ eq4, eq6 });
+            }
+
+            conclusion = Z3_mk_and(ctx, num_k, eq_for_all_k);
+            free(eq_for_all_k);
+        }
+
+        constraints[h - 1] = Z3_mk_implies(ctx, premise, conclusion);
+    }
+
+    Z3_ast result = Z3_mk_and(ctx, num_heights, constraints);
+    free(constraints);
+    return result;
+}
+
+/**
  * @brief edge : si on est à (u, pos, h), alors à pos+1 on doit être dans un successeur de u
  * @param ctx The solver context.
  * @param network The graph
@@ -492,12 +698,36 @@ Z3_ast tn_reduction(Z3_context ctx, const TunnelNetwork network, int length)
     Z3_ast f7 = Z3_mk_and(ctx, length, f7_parts);
     free(f7_parts);
 
+    // φ8 : évolution du contenu de pile lors des transmissions
+    Z3_ast *f8_parts = malloc(length * sizeof(Z3_ast));
+    for (int pos = 0; pos < length; pos++) {
+        f8_parts[pos] = tn_stack_content_transmission(ctx, length, pos);
+    }
+    Z3_ast f8 = Z3_mk_and(ctx, length, f8_parts);
+    free(f8_parts);
+
+    // φ9 : encapsulation (contenu de pile)
+    Z3_ast *f9_parts = malloc(length * sizeof(Z3_ast));
+    for (int pos = 0; pos < length; pos++) {
+        f9_parts[pos] = tn_stack_content_encapsulation(ctx, length, pos);
+    }
+    Z3_ast f9 = Z3_mk_and(ctx, length, f9_parts);
+    free(f9_parts);
+
+    // φ10 : décapsulation (contenu de pile)
+    Z3_ast *f10_parts = malloc(length * sizeof(Z3_ast));
+    for (int pos = 0; pos < length; pos++) {
+        f10_parts[pos] = tn_stack_content_decapsulation(ctx, length, pos);
+    }
+    Z3_ast f10 = Z3_mk_and(ctx, length, f10_parts);
+    free(f10_parts);
+
     // Contraintes d’arêtes du graphe
     Z3_ast f_edges = tn_edge_constraints(ctx, network, length);
 
     // Conjonction globale de toutes les formules
-    Z3_ast all[8] = { f1, f2, f3, f4, f5, f6, f7, f_edges };
-    return Z3_mk_and(ctx, 8, all);
+    Z3_ast all[11] = { f1, f2, f3, f4, f5, f6, f7, f8, f9, f10, f_edges };
+    return Z3_mk_and(ctx, 11, all);
 }
 
 
