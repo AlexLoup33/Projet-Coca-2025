@@ -94,27 +94,31 @@ Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, const TunnelNetwork networ
 {
     int stack_size = get_stack_size(length);
     int num_nodes = tn_get_num_nodes(network);
+    // Total number of variables x(op, i, h) for a given position i
     int num_vars = stack_size * num_nodes;
     int num_positions = length + 1; 
 
     Z3_ast *pos_constraints = malloc(num_positions * sizeof(Z3_ast));
 
     for (int i = 0; i <= length; i++) {
+        // Collect all variables x(op, i, h) for this position
         Z3_ast *vars = malloc(num_vars * sizeof(Z3_ast));
         int idx = 0;
         for (int h = 0; h < stack_size; h++) {
             for (int op = 0; op < num_nodes; op++) {
+                // x(op, i, h): true if at position i we are at operation "op" with height "h"
                 vars[idx++] = tn_path_variable(ctx, op, i, h);
             }
         }
-
+        // 1. At least one variable is true
         Z3_ast existence = Z3_mk_or(ctx, num_vars, vars);
-        
+        // 2. At most one variable is true
         int num_pairs = num_vars * (num_vars - 1) / 2;
         Z3_ast *clauses = malloc(num_pairs * sizeof(Z3_ast));
         int c = 0;
         for (int p = 0; p < num_vars; p++) {
             for (int q = p + 1; q < num_vars; q++) {
+                //cannot both be true at the same time.
                 Z3_ast not_both[2] = { Z3_mk_not(ctx, vars[p]), Z3_mk_not(ctx, vars[q]) };
                 clauses[c++] = Z3_mk_or(ctx, 2, not_both);
             }
@@ -277,11 +281,12 @@ Z3_ast tn_encapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int 
  * @param pos The current position in the path.
  * @return Z3_ast
  */
-Z3_ast tn_decapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int length, int pos){
+Z3_ast tn_decapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int length, int pos)
+{
     int stack_size = get_stack_size(length);
     if (stack_size <= 1) return Z3_mk_true(ctx);
     int num_nodes = tn_get_num_nodes(network);
-
+    // We will generate one constraint per (u, h)
     Z3_ast *constraints = malloc(num_nodes * (stack_size-1) * sizeof(Z3_ast));
     int count = 0;
 
@@ -359,7 +364,6 @@ Z3_ast tn_stack_content_coherence(Z3_context ctx, int length, int pos){
 Z3_ast tn_operation_feasibility(Z3_context ctx, TunnelNetwork network, int length, int pos){
     int stack_size = get_stack_size(length);
     int num_nodes = tn_get_num_nodes(network);
-    // (num_nodes * stack_size * 2) because each node/height may generate 1 or 2 constraints.
     Z3_ast *constraints = malloc(num_nodes * stack_size * sizeof(Z3_ast));
     int count = 0;
 
