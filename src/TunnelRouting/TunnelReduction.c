@@ -63,7 +63,7 @@ int get_stack_size(int length)
 }
 
 /**
- * @brief vérifie si N'IMPORTE QUEL nœud est actif à (pos, height)
+ * @brief Checks if ANY node is active at (pos, height)
  *
  * @param ctx The solver context.
  * @param num_nodes The number of nodes.
@@ -90,7 +90,8 @@ Z3_ast tn_any_node_at(Z3_context ctx, int num_nodes, int pos, int height) {
  * @param length The length of the sought path.
  * @return Z3_ast
  */
-Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, const TunnelNetwork network, int length){
+Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, const TunnelNetwork network, int length)
+{
     int stack_size = get_stack_size(length);
     int num_nodes = tn_get_num_nodes(network);
     int num_vars = stack_size * num_nodes;
@@ -139,7 +140,8 @@ Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, const TunnelNetwork networ
  * @param length The length of the sought path.
  * @return Z3_ast
  */
-Z3_ast tn_init_final_stack(Z3_context ctx, const TunnelNetwork network, int length){
+Z3_ast tn_init_final_stack(Z3_context ctx, const TunnelNetwork network, int length)
+{
     int init  = tn_get_initial(network);
     int final = tn_get_final(network);
 
@@ -159,37 +161,47 @@ Z3_ast tn_init_final_stack(Z3_context ctx, const TunnelNetwork network, int leng
 /**
  * @brief φ3 : Stack height transition rule for Transmission
  * 
+ * @param ctx The solver context.
  * @param length The length of the sought path.
  * @param pos The current position of the path.
  * @return Z3_ast
  */
-Z3_ast tn_transition_stack_height(Z3_context ctx, TunnelNetwork network, int length, int pos){
+Z3_ast tn_transition_stack_height(Z3_context ctx, TunnelNetwork network, int length, int pos)
+{
     int stack_size = get_stack_size(length);
     int num_nodes = tn_get_num_nodes(network);
+    // We will generate one constraint per (u, h)
     Z3_ast *constraints = malloc(num_nodes * stack_size * sizeof(Z3_ast));
     int count = 0;
 
+    //is there ANY node at height h at step pos+1? If true, height h is preserved → potential Transmission transition.
     Z3_ast next_any_h[stack_size];
     for(int h=0; h<stack_size; h++) next_any_h[h] = tn_any_node_at(ctx, num_nodes, pos+1, h);
 
+    //for each height h and each node u
     for (int h = 0; h < stack_size; h++) {
         for (int u = 0; u < num_nodes; u++) {
-            // Prémisse : On est en u à h, et au pas suivant on est ENCORE à h (Transmission)
+            // We are at node u at step pos with height h AND at step pos+1 there is some node at the SAME height h
+            // height is preserved → Transmission
             Z3_ast premise = Z3_mk_and(ctx, 2, (Z3_ast[]){
                 tn_path_variable(ctx, u, pos, h),
                 next_any_h[h] 
             });
 
+            // Stack content at (pos, h)
             Z3_ast y4 = tn_4_variable(ctx, pos, h);
             Z3_ast y6 = tn_6_variable(ctx, pos, h);
             
-            // Vérifie les capacités du nœud u dans le graphe
+            // Check whether node u allows the required transmission type.
             Z3_ast can_t4 = tn_node_has_action(network, u, transmit_4) ? Z3_mk_true(ctx) : Z3_mk_false(ctx);
             Z3_ast can_t6 = tn_node_has_action(network, u, transmit_6) ? Z3_mk_true(ctx) : Z3_mk_false(ctx);
 
+            //If the content is 4, node u must allow transmit_4.
             Z3_ast valid_4 = Z3_mk_implies(ctx, y4, can_t4);
+            //If the content is 6, node u must allow transmit_6.
             Z3_ast valid_6 = Z3_mk_implies(ctx, y6, can_t6);
 
+            // Both conditions must hold (for 4 and for 6)
             Z3_ast conclusion = Z3_mk_and(ctx, 2, (Z3_ast[]){valid_4, valid_6});
             constraints[count++] = Z3_mk_implies(ctx, premise, conclusion);
         }
@@ -201,7 +213,8 @@ Z3_ast tn_transition_stack_height(Z3_context ctx, TunnelNetwork network, int len
 
 /**
  * @brief φ4 : Stack height transition rule for Encapsulation
- * 
+ *
+ * @param ctx The solver context.
  * @param length The length of the sought path.
  * @param pos The current position in the path.
  * @return Z3_ast
@@ -210,33 +223,41 @@ Z3_ast tn_encapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int 
     int stack_size = get_stack_size(length);
     if (stack_size <= 1) return Z3_mk_true(ctx);
     int num_nodes = tn_get_num_nodes(network);
-    
+    // We will generate one constraint per (u, h)
     Z3_ast *constraints = malloc(num_nodes * (stack_size-1) * sizeof(Z3_ast));
     int count = 0;
 
+    // Is there ANY node at height h+1 at step pos+1 ? Can the stack increase by one level?
     Z3_ast next_any_h_plus[stack_size];
     for(int h=0; h<stack_size-1; h++) next_any_h_plus[h] = tn_any_node_at(ctx, num_nodes, pos+1, h+1);
 
+    //for each height h (except the top one) and each node u
     for (int h = 0; h < stack_size - 1; h++) {
         for(int u=0; u < num_nodes; u++) {
-            // Prémisse : On est en u à h, et au pas suivant on est à h+1 (Push)
+            // Premise: We are at u at h, and in the next step we are at h+1 (Push)
             Z3_ast premise = Z3_mk_and(ctx, 2, (Z3_ast[]){
                 tn_path_variable(ctx, u, pos, h),
                 next_any_h_plus[h]
             });
 
+            // Stack content before the PUSH (h, pos)
             Z3_ast y4_curr = tn_4_variable(ctx, pos, h);
             Z3_ast y6_curr = tn_6_variable(ctx, pos, h);
+            // Stack content after the PUSH (h+1, pos+1)
             Z3_ast y4_next = tn_4_variable(ctx, pos+1, h+1);
             Z3_ast y6_next = tn_6_variable(ctx, pos+1, h+1);
 
-            // On vérifie quelle action de PUSH est autorisée par le nœud u
+            // PUSH 4 → 4
             Z3_ast c1 = Z3_mk_implies(ctx, Z3_mk_and(ctx, 2, (Z3_ast[]){y4_curr, y4_next}), 
                         tn_node_has_action(network, u, push_4_4) ? Z3_mk_true(ctx) : Z3_mk_false(ctx));
+            
+            // PUSH 4 → 6
             Z3_ast c2 = Z3_mk_implies(ctx, Z3_mk_and(ctx, 2, (Z3_ast[]){y4_curr, y6_next}), 
                         tn_node_has_action(network, u, push_4_6) ? Z3_mk_true(ctx) : Z3_mk_false(ctx));
+            // PUSH 6 → 4
             Z3_ast c3 = Z3_mk_implies(ctx, Z3_mk_and(ctx, 2, (Z3_ast[]){y6_curr, y4_next}), 
                         tn_node_has_action(network, u, push_6_4) ? Z3_mk_true(ctx) : Z3_mk_false(ctx));
+            // PUSH 6 → 6
             Z3_ast c4 = Z3_mk_implies(ctx, Z3_mk_and(ctx, 2, (Z3_ast[]){y6_curr, y6_next}), 
                         tn_node_has_action(network, u, push_6_6) ? Z3_mk_true(ctx) : Z3_mk_false(ctx));
 
@@ -251,6 +272,7 @@ Z3_ast tn_encapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int 
 /**
  * @brief φ5 : Stack height transition rule for Decapsulation
  * 
+ * @param ctx The solver context.
  * @param length The length of the sought path.
  * @param pos The current position in the path.
  * @return Z3_ast
@@ -268,7 +290,7 @@ Z3_ast tn_decapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int 
 
     for (int h = 1; h < stack_size; h++) {
         for(int u=0; u < num_nodes; u++) {
-            // Prémisse : On est en u à h, et au pas suivant on est à h-1 (Pop)
+            //Condition : We are at u at h, and in the next step we are at h-1 (Pop)
             Z3_ast premise = Z3_mk_and(ctx, 2, (Z3_ast[]){
                 tn_path_variable(ctx, u, pos, h),
                 next_any_h_minus[h]
@@ -283,11 +305,11 @@ Z3_ast tn_decapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int 
             Z3_ast c1 = Z3_mk_implies(ctx, Z3_mk_and(ctx, 2, (Z3_ast[]){y4_top, y4_under}), 
                         tn_node_has_action(network, u, pop_4_4) ? Z3_mk_true(ctx) : Z3_mk_false(ctx));
             
-            // Cas 2: Top 4, Under 6 (64↓6) -> C'est pop_6_4 (on enlève 4 pour révéler 6)
+            // Cas 2: Top 4, Under 6 (64↓6) -> It's pop_6_4 (you remove 4 to reveal 6)
             Z3_ast c2 = Z3_mk_implies(ctx, Z3_mk_and(ctx, 2, (Z3_ast[]){y4_top, y6_under}), 
                         tn_node_has_action(network, u, pop_6_4) ? Z3_mk_true(ctx) : Z3_mk_false(ctx));
             
-            // Cas 3: Top 6, Under 4 (46↓4) -> C'est pop_4_6 (on enlève 6 pour révéler 4)
+            // Cas 3: Top 6, Under 4 (46↓4) -> It's pop_4_6 (remove 6 to reveal 4)
             Z3_ast c3 = Z3_mk_implies(ctx, Z3_mk_and(ctx, 2, (Z3_ast[]){y6_top, y4_under}), 
                         tn_node_has_action(network, u, pop_4_6) ? Z3_mk_true(ctx) : Z3_mk_false(ctx));
             
@@ -337,31 +359,36 @@ Z3_ast tn_stack_content_coherence(Z3_context ctx, int length, int pos){
 Z3_ast tn_operation_feasibility(Z3_context ctx, TunnelNetwork network, int length, int pos){
     int stack_size = get_stack_size(length);
     int num_nodes = tn_get_num_nodes(network);
+    // (num_nodes * stack_size * 2) because each node/height may generate 1 or 2 constraints.
     Z3_ast *constraints = malloc(num_nodes * stack_size * sizeof(Z3_ast));
     int count = 0;
 
     for(int h=0; h<stack_size; h++) {
         for(int u=0; u<num_nodes; u++) {
+            // x_{u,pos,h} : node u is active at position pos and height h
             Z3_ast active = tn_path_variable(ctx, u, pos, h);
+            // y_{pos,h,4} and y_{pos,h,6}: the top of the stack is respectively 4 or 6
             Z3_ast y4 = tn_4_variable(ctx, pos, h);
             Z3_ast y6 = tn_6_variable(ctx, pos, h);
 
-            
+            //operations can only be executed if the top-of-stack is 4.
             bool can_input_4 = tn_node_has_action(network, u, transmit_4) ||
                                tn_node_has_action(network, u, push_4_4) ||
                                tn_node_has_action(network, u, push_4_6) ||
                                tn_node_has_action(network, u, pop_4_4) ||
                                tn_node_has_action(network, u, pop_6_4); // pop_6_4 signifie Top=4, Under=6
 
+            //These operations can only be executed if the top-of-stack is 6.                  
             bool can_input_6 = tn_node_has_action(network, u, transmit_6) ||
                                tn_node_has_action(network, u, push_6_4) ||
                                tn_node_has_action(network, u, push_6_6) ||
                                tn_node_has_action(network, u, pop_4_6) || // pop_4_6 signifie Top=6, Under=4
                                tn_node_has_action(network, u, pop_6_6);
-            
+            // If node u cannot use top=4, forbid y4 whenever active is true
             if (!can_input_4) {
                 constraints[count++] = Z3_mk_implies(ctx, active, Z3_mk_not(ctx, y4));
             }
+            // If node u cannot use top=6, forbid y6 whenever active is true
             if (!can_input_6) {
                 constraints[count++] = Z3_mk_implies(ctx, active, Z3_mk_not(ctx, y6));
             }
@@ -372,7 +399,19 @@ Z3_ast tn_operation_feasibility(Z3_context ctx, TunnelNetwork network, int lengt
     return res;
 }
 
-//---------------------------------------------------------------------------------------------------------
+/**
+ * @brief Builds a conjunction expressing that the lower part of the stack 
+ *        (prefix 0..limit-1) remains identical between positions pos and next_pos.
+ *
+ * @details This function creates the formula: ( y[pos,k,a] ↔ y[pos+1,k,a] )
+ * for both possible contents (4 and 6).
+ *
+ * @param ctx       The solver context.
+ * @param pos       The current position in the path.
+ * @param next_pos  The next position (pos+1).
+ * @param limit     The number of stack cells to preserve (prefix size).
+ * @return Z3_ast 
+ */
 Z3_ast tn_prefix_equal(Z3_context ctx, int pos, int next_pos, int limit){
     if (limit <= 0) {
         return Z3_mk_true(ctx);
@@ -390,19 +429,48 @@ Z3_ast tn_prefix_equal(Z3_context ctx, int pos, int next_pos, int limit){
     return res;
 }
 
-Z3_ast tn_stack_preservation_transmission(Z3_context ctx, int num_nodes, int pos, int h) 
+/**
+ * @brief φ8-Transmission: preservation of stack contents when the height remains the same.
+ *
+ * @details If the stack height is h at both pos and pos+1, then the lower part of the stack
+ * (0..h-1) must stay identical.
+ *
+ * @param ctx       The solver context.
+ * @param num_nodes Number of nodes in the network (used for ∃ over x variables).
+ * @param pos       Current position.
+ * @param h         Current stack height.
+ * @return Z3_ast
+ */
+static Z3_ast tn_stack_preservation_transmission(Z3_context ctx, int num_nodes, int pos, int h) 
 {
+    // Condition: stack height = h at pos AND at pos+1
     Z3_ast any_at_h = tn_any_node_at(ctx, num_nodes, pos,   h);
     Z3_ast next_at_h = tn_any_node_at(ctx, num_nodes, pos+1, h);
     Z3_ast trans_cond = Z3_mk_and(ctx, 2, (Z3_ast[]){ any_at_h, next_at_h });
 
+    // Preserve cells 0..h-1
     Z3_ast trans_preserves = tn_prefix_equal(ctx, pos, pos+1, h);
 
     return Z3_mk_implies(ctx, trans_cond, trans_preserves);
 }
 
-Z3_ast tn_stack_preservation_encapsulation(Z3_context ctx, int num_nodes, int stack_size, int pos, int h) {
+/**
+ * @brief φ9-Encapsulation: preservation of stack contents when height increases (h → h+1).
+ *
+ * @details When encapsulating, a new element is pushed on top of the stack. 
+ * Therefore stack cells 0..h must remain identical.
+ *
+ * @param ctx         The solver context.
+ * @param num_nodes   Number of graph nodes.
+ * @param stack_size  Maximum stack size.
+ * @param pos         Current position.
+ * @param h           Current stack height.
+ * @return Z3_ast
+ */
+static Z3_ast tn_stack_preservation_encapsulation(Z3_context ctx, int num_nodes, int stack_size, int pos, int h) 
+{
     Z3_ast any_at_h = tn_any_node_at(ctx, num_nodes, pos, h);
+    // True only if h+1 is a valid height
     Z3_ast next_at_h_plus = Z3_mk_false(ctx);
 
     if (h + 1 < stack_size) {
@@ -411,13 +479,28 @@ Z3_ast tn_stack_preservation_encapsulation(Z3_context ctx, int num_nodes, int st
 
     Z3_ast enc_cond = Z3_mk_and(ctx, 2, (Z3_ast[]){ any_at_h, next_at_h_plus });
 
+    // Preserve stack cells 0..h (h+1 cells)
     Z3_ast enc_preserves = tn_prefix_equal(ctx, pos, pos+1, h+1);
 
     return Z3_mk_implies(ctx, enc_cond, enc_preserves);
 }
 
-Z3_ast tn_stack_preservation_decapsulation(Z3_context ctx, int num_nodes, int pos, int h) {
+/**
+ * @brief φ10-Decapsulation: preservation of contents when height decreases (h → h-1).
+ *
+ * @details When popping the top element, the new top becomes cell h-1,
+ * therefore the lower cells 0..h-1 must remain identical.
+ *
+ * @param ctx         The solver context.
+ * @param num_nodes   Number of graph nodes.
+ * @param pos         Current position.
+ * @param h           Current stack height.
+ * @return Z3_ast
+ */
+static Z3_ast tn_stack_preservation_decapsulation(Z3_context ctx, int num_nodes, int pos, int h) 
+{
     Z3_ast any_at_h = tn_any_node_at(ctx, num_nodes, pos,   h);
+    // True only if h-1 is a valid height
     Z3_ast next_at_h_minus = Z3_mk_false(ctx);
 
     if (h - 1 >= 0) {
@@ -425,13 +508,13 @@ Z3_ast tn_stack_preservation_decapsulation(Z3_context ctx, int num_nodes, int po
     }
 
     Z3_ast dec_cond = Z3_mk_and(ctx, 2, (Z3_ast[]){ any_at_h, next_at_h_minus });
-
+    // Preserve cells 0..h-1
     Z3_ast dec_preserves = tn_prefix_equal(ctx, pos, pos+1, h);
 
     return Z3_mk_implies(ctx, dec_cond, dec_preserves);
 }
 
-// --- New Global Stack Preservation Feature ---
+// --- Global Stack Preservation Feature ---
 
 /**
  * @brief φ8  φ9  φ10 : Stack preservation logic for Transmission, Encapsulation, and Decapsulation
@@ -453,6 +536,7 @@ Z3_ast tn_stack_preservation_logic(Z3_context ctx, const TunnelNetwork network, 
 
         for (int h = 0; h < stack_size; h++) {
 
+            // Combine the 3 possible cases for this height
             Z3_ast c1 = tn_stack_preservation_transmission(
                 ctx, num_nodes, pos, h
             );
@@ -471,19 +555,29 @@ Z3_ast tn_stack_preservation_logic(Z3_context ctx, const TunnelNetwork network, 
         constraints[pos] = Z3_mk_and(ctx, stack_size, h_constraints);
         free(h_constraints);
     }
+
+    // Last position does not impose constraints
     constraints[num_pos - 1] = Z3_mk_true(ctx);
 
     Z3_ast res = Z3_mk_and(ctx, num_pos, constraints);
     free(constraints);
     return res;
 }
-//------------------------------------------------------------------------------------------------------------------
 
 /**
- * @brief edge_node: local constraint for a node u at a given position and height.
- * If we are at (u, pos, h), then at pos+1 we must be in a successor of u
- * (with height h, h+1, or h-1).
+ * @brief Local edge-transition constraint for a single state (op, pos, h).
+ * @details If x_{op,pos,h} is true, then at pos+1 the path must move to some successor
+ *          op' of op in the graph, with a valid stack height transition (h-1, h, or h+1).
+ *          If no successor is valid for this state, the state is forbidden.
+ * @param ctx The solver context.
+ * @param network The tunnel network graph.
+ * @param length The length of the path being constructed.
+ * @param pos The current path position.
+ * @param h The current stack height.
+ * @param u The current operation (node).
+ * @return Z3_ast
  */
+
 static Z3_ast tn_edge_node_constraint(Z3_context ctx, const TunnelNetwork network, int length, int pos, int h, int u){
     int num_nodes  = tn_get_num_nodes(network);
     int stack_size = get_stack_size(length);
@@ -522,9 +616,18 @@ static Z3_ast tn_edge_node_constraint(Z3_context ctx, const TunnelNetwork networ
 }
 
 /**
- * @brief edge_height : contrainte pour toutes les valeurs de u à une hauteur h donnée.
- * Construit ∧_u edge_node(u, pos, h).
+ * @brief Edge-transition constraint for all operations at a given height.
+ * @details Builds the conjunction of all local constraints (op, pos, h)
+ *          over every operation op in the graph, enforcing valid transitions for
+ *          any active operation at this height.
+ * @param ctx The solver context.
+ * @param network The tunnel network graph.
+ * @param length The length of the path being constructed.
+ * @param pos The current path position.
+ * @param h The stack height for which constraints are generated.
+ * @return Z3_ast
  */
+
 static Z3_ast tn_edge_height_constraint(Z3_context ctx, const TunnelNetwork network, int length, int pos, int h){
     int num_nodes = tn_get_num_nodes(network);
     Z3_ast *node_constraints = malloc(num_nodes * sizeof(Z3_ast));
@@ -539,9 +642,17 @@ static Z3_ast tn_edge_height_constraint(Z3_context ctx, const TunnelNetwork netw
 }
 
 /**
- * @brief edge_pos: constraint for a given position (all heights)
- * Constructs ∧_h edge_height(pos, h).
+ * @brief Edge-transition constraint for all stack heights at a given position.
+ * @details Builds the conjunction of all height-level constraints (pos, h)
+ *          over every stack height h, ensuring that every possible height at this
+ *          position must follow a valid graph transition at pos+1.
+ * @param ctx The solver context.
+ * @param network The tunnel network graph.
+ * @param length The length of the path being constructed.
+ * @param pos The current path position.
+ * @return Z3_ast
  */
+
 static Z3_ast tn_edge_pos_constraint(Z3_context ctx, const TunnelNetwork network, int length, int pos){
     int stack_size = get_stack_size(length);
     Z3_ast *height_constraints = malloc(stack_size * sizeof(Z3_ast));
@@ -556,11 +667,13 @@ static Z3_ast tn_edge_pos_constraint(Z3_context ctx, const TunnelNetwork network
 }
 
 /**
- * @brief φ11 : Verification of constraints on transitions
- * 
- * @details if we are at (u, pos, h), then at pos+1 we must be in a successor of u
+ * @brief φ11 : Builds the full edge-transition constraint for the entire path.
+ * @details If we are at (op, pos, h), then at pos+1 we must be in a successor of op,
+ *          with a stack height compatible with push, pop, or transmission. This function
+ *          aggregates all local constraints over every position, height, and operation,
+ *          producing the global edge constraint.
  * @param ctx The solver context.
- * @param network The graph
+ * @param network The tunnel network graph.
  * @param length The length of the sought path.
  * @return Z3_ast
  */
