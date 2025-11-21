@@ -49,4 +49,97 @@ void tn_get_path_from_model(Z3_context ctx, Z3_model model, TunnelNetwork networ
  */
 void tn_print_model(Z3_context ctx, Z3_model model, TunnelNetwork network, int bound);
 
+
+/**
+ * @brief φ1 : Existence, single operation, and single height.
+ * 
+ * @param ctx The solver context.
+ * @param network The graph
+ * @param length The length of the sought path.
+ * @return Z3_ast
+ */
+Z3_ast tn_exist_uniqueOp_uniqueHeight(Z3_context ctx, const TunnelNetwork network, int length);
+
+
+/**
+ * @brief φ2 : Initial and final stack
+ * 
+ * @param ctx The solver context.
+ * @param network The graph
+ * @param length The length of the sought path.
+ * @return Z3_ast
+ */
+Z3_ast tn_init_final_stack(Z3_context ctx, const TunnelNetwork network, int length);
+
+
+/**
+ * @brief φ3 : Stack height transition rule for Transmission
+ * 
+ * @param length The length of the sought path.
+ * @param pos The current position of the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_transition_stack_height(Z3_context ctx, TunnelNetwork network, int length, int pos);
+
+/**
+ * @brief φ4 : Stack height transition rule for Encapsulation
+ * 
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_encapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int length, int pos);
+
+/**
+ * @brief φ5 : Stack height transition rule for Decapsulation
+ * 
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast
+ */
+Z3_ast tn_decapsulation_stack_height(Z3_context ctx, TunnelNetwork network, int length, int pos);
+
+/**
+ * @brief φ6 : Stack content coherence (exactly with one protocol (4 or 6))
+ * 
+ * @param ctx The solver context.
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast 
+ */
+Z3_ast tn_stack_content_coherence(Z3_context ctx, int length, int pos);
+
+/**
+ * @brief φ7 :  Conditions necessary for an operation to be feasible
+ * 
+ * @param ctx The solver context.
+ * @param network The graph.
+ * @param length The length of the sought path.
+ * @param pos The current position in the path.
+ * @return Z3_ast 
+ */
+Z3_ast tn_operation_feasibility(Z3_context ctx, TunnelNetwork network, int length, int pos);
+
+/**
+ * @brief φ8  φ9  φ10 : Stack preservation logic for Transmission, Encapsulation, and Decapsulation
+ * 
+ * @param ctx The solver context.
+ * @param network The graph
+ * @param length The length of the sought path.
+ * @return Z3_ast
+ */
+Z3_ast tn_stack_preservation_logic(Z3_context ctx, const TunnelNetwork network, int length);
+
+/**
+ * @brief φ11 : Verification of constraints on transitions
+ * 
+ * @details if we are at (u, pos, h), then at pos+1 we must be in a successor of u
+ * @param ctx The solver context.
+ * @param network The graph
+ * @param length The length of the sought path.
+ * @return Z3_ast
+ */
+
+Z3_ast tn_edge_constraints(Z3_context ctx, const TunnelNetwork network, int length);
+
 #endif
